@@ -3,10 +3,21 @@
 ## 一句話
 手機優先的 4 階灰階 Bayer 抖色濾鏡 webapp。三種來源:相機 / 圖 / GLB 模型,全部進同一個濾鏡。純靜態,部署在 Cloudflare Pages(GitHub 連動),無 build step。
 
-## 狀態(2026-10-19)
-- 已完成並推上 `main`:`index.html`、`manifest.webmanifest`、`sw.js`、icon ×3。
-- 在無頭 Chromium(fake camera)測過:相機串流、拍照存檔、圖濾鏡、GLB 載入、壞檔錯誤提示。
-- **未做**:iPhone 實機測試(相機權限、Web Share 存圖、加入主畫面)。**未做**:Cloudflare Pages 連線。
+## 狀態(2026-10-19,換環境交接)
+- `main` 在 `56c1b54`(PR #1 已 squash merge)。`sw.js` cache 名現為 `pixpic-v2`。
+- 本輪已修(headless Chromium + fake camera + reduced-motion 驗過 9 項,無 pageerror):
+  1. `[ SHOOT ]` 僅在有有效畫面時啟用(`live` 旗標,`frame()` 內 `setLive(ok)`),相機被擋 / PHOTO 未選圖不再存出黑圖。
+  2. `startCam()` 用 `camSeq` 請求序號,`stopCam()` 會讓進行中的請求過期;快速 FLIP / 切來源不洩漏 stream。
+  3. `prefers-reduced-motion` 下 `#flash` 直接 `display:none`。
+  4. 結果頁(`#sheet`):開啟時焦點進 `CLOSE`、背景 `header/main/#ctl` 設 `inert`、Esc 關閉、關閉後焦點回 `SHOOT`。
+- **未做**:iPhone 實機測試(相機權限、Web Share 存圖、加入主畫面)。
+- **未做 · 部署被擋**:Cloudflare Pages 連線與 `apixpic.adamliu.uk` 綁定。上一個環境沒有 Cloudflare 工具、沒有 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`,且網路政策擋 `apixpic.adamliu.uk` / `*.pages.dev`(proxy 回 502,不代表網站掛)。線上目前是否存在、是哪個版本:**未驗證**。
+- Adam 已授權「所有部署項目」。新環境若有 token 與放行網路,直接執行下方「部署」。
+
+## 部署(Cloudflare Pages,未執行)
+- Dashboard 路線:Workers & Pages → Pages → Connect to Git → `LIUYUTSO/A-PixPic`;Production branch `main`;Build command 留空;Output directory `/`;Custom domains 加 `apixpic.adamliu.uk`。
+- CLI 路線(需 Secrets `CLOUDFLARE_API_TOKEN`〔Account → Cloudflare Pages: Edit〕、`CLOUDFLARE_ACCOUNT_ID`,網路放行 `api.cloudflare.com`):`npx wrangler pages project create apixpic --production-branch main` → `npx wrangler pages deploy . --project-name apixpic --branch main`。
+- 驗證:`curl https://apixpic.adamliu.uk/sw.js` 應含 `pixpic-v2`。token 只放環境 Secrets,不貼對話。
 
 ## 檔案
 - `index.html` — 全部邏輯與樣式(單檔,ES module)。測試 hook:`window.__pixpic`。
@@ -26,9 +37,14 @@ luma(0.299/0.587/0.114) → `(v-.5)*contrast+.5` → Bayer 4×4 閾值 `(B+.5)/1
 ## 已知限制 / 待辦(依優先序)
 1. **iPhone 實機驗證**:相機 `getUserMedia`、`navigator.share({files})`、standalone 模式下的版面(safe-area)。
 2. 3D 需網路(CDN)。若要離線:把 three + addons vendoring 進 repo 並改 importmap,同步更新 `sw.js` 快取清單。
-3. 檢視區是 3:4 置中,大螢幕/高螢幕上下留白偏多;可考慮依裝置比例調整。
+3. 檢視區是 3:4 置中,大螢幕/高螢幕上下留白偏多。**Adam 已明說先不動**,除非他再提。
 4. 手機直式鎖定只寫在 manifest,Safari 分頁內不會鎖。
 5. 無 iOS 相簿直存:iOS 靠分享面板「儲存影像」;桌面走 `<a download>`。
+6. 效能:PHOTO / CAM 畫面沒變也每幀重跑濾鏡(耗電),可只在來源或參數變動時重算。
+
+## 環境注意
+- 不要用 `pkill -f <pattern>`:pattern 會比對到自己的 shell 指令列,把 shell 殺掉(exit 144),後面的 commit / push 不會執行。停背景 server 請記 PID 再 `kill`。
+- 合併過的 PR 不要重用:從最新 `main` 重開分支再做新改動。
 
 ## 測試方式(headless,可重現)
 Playwright + Chromium 旗標 `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream --use-gl=swiftshader --enable-unsafe-swiftshader`;把 `cdn.jsdelivr.net/npm/three@0.160.0/**` route 到本機 `node_modules/three`,字型請求 abort(預期會有一則 `ERR_FAILED` console error,正常)。流程:CAM→SHOOT→PHOTO 載圖→3D demo→以 `GLTFExporter` 產 GLB 餵 `#file`→餵壞檔確認錯誤訊息。
