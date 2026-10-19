@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>A-PIXPIC</title>
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="A-PixPic">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400&display=swap" rel="stylesheet">
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<style>
+:root{--bg:#000;--fg:#fff;--pad:16px}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--fg);overscroll-behavior:none}
+body{
+  font:300 11px/1.6 "Martian Mono","Letter Gothic","Courier New",monospace;
+  text-transform:uppercase;letter-spacing:.1em;
+  min-height:100dvh;height:100dvh;overflow:hidden;
+  display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  padding:max(env(safe-area-inset-top),12px) var(--pad) max(env(safe-area-inset-bottom),14px);
+  gap:12px;user-select:none;-webkit-user-select:none;
+}
+button{font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;background:none;border:0;border-radius:0;cursor:pointer;padding:6px 0}
+button:hover{text-decoration:underline}
+button:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:0}
+button[aria-pressed="true"]{text-decoration:underline;text-underline-offset:4px}
+button:disabled{opacity:.35;pointer-events:none}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+header nav{display:flex;gap:16px}
+#stage{min-height:0;display:flex;align-items:center;justify-content:center}
+#frame{position:relative;display:grid;grid-template-columns:var(--vw,0px) 30px;grid-template-rows:var(--vh,0px);background:#fff}
+#view{position:relative;background:#000;min-width:0;min-height:0;touch-action:none;overflow:hidden}
+#screen{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;display:block}
+#msg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:24px;color:#fff;background:#000;line-height:1.8}
+#msg.on{display:flex}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .2s linear}
+#rail{background:#fff;color:#000;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:6px 0;font-size:10px;line-height:1.15;letter-spacing:0}
+#rail .v{display:flex;flex-direction:column;align-items:center}
+#rail .name{writing-mode:vertical-rl;text-orientation:upright;letter-spacing:.05em;font-size:11px}
+footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+footer .l{justify-self:start}footer .r{justify-self:end}
+#shoot{font-size:13px;padding:10px 4px}
+#thumb{width:34px;height:34px;display:block;image-rendering:pixelated;background:#000;outline:1px solid #fff;outline-offset:0}
+#thumb[hidden]{display:none}
+.row{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+#tune{display:flex;justify-content:space-between;align-items:center;gap:12px}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;width:90px;height:20px}
+input[type=range]::-webkit-slider-runnable-track{height:1px;background:#fff}
+input[type=range]::-moz-range-track{height:1px;background:#fff}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:8px;height:14px;background:#fff;border:0;border-radius:0;margin-top:-7px}
+input[type=range]::-moz-range-thumb{width:8px;height:14px;background:#fff;border:0;border-radius:0}
+#sheet{position:fixed;inset:0;background:#000;display:none;grid-template-rows:minmax(0,1fr) auto;gap:12px;padding:max(env(safe-area-inset-top),12px) var(--pad) max(env(safe-area-inset-bottom),14px);z-index:5}
+#sheet.on{display:grid}
+#sheet .pic{min-height:0;display:flex;align-items:center;justify-content:center}
+#sheet img{max-width:100%;max-height:100%;image-rendering:pixelated;display:block;user-select:auto;-webkit-user-select:auto;-webkit-touch-callout:default}
+#sheet .row{justify-content:space-between}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<header>
+  <span>A-PIXPIC ™</span>
+  <nav aria-label="Source">
+    <button data-src="cam" aria-pressed="true">[CAM]</button>
+    <button data-src="photo" aria-pressed="false">[PHOTO]</button>
+    <button data-src="glb" aria-pressed="false">[3D]</button>
+  </nav>
+</header>
+
+<main id="stage">
+  <div id="frame">
+    <div id="view">
+      <canvas id="screen"></canvas>
+      <div id="msg" role="status"></div>
+      <div id="flash"></div>
+    </div>
+    <aside id="rail" aria-hidden="true">
+      <div class="v"><span id="rMode">REC</span><span id="rZoom">x1.0</span></div>
+      <span class="name">APIXPIC</span>
+      <div class="v"><span id="rRes">160</span><span>PX</span></div>
+    </aside>
+  </div>
+</main>
+
+<div>
+  <div id="tune">
+    <div class="row">
+      <button id="zOut" aria-label="Zoom out">[ − ]</button>
+      <button id="zIn" aria-label="Zoom in">[ + ]</button>
+      <button id="res" aria-label="Pixel size">[RES 160]</button>
+    </div>
+    <label class="row" style="gap:8px">CON <input id="con" type="range" min="60" max="220" value="130"></label>
+  </div>
+  <footer>
+    <div class="l"><button id="thumbBtn" aria-label="Open last shot" hidden style="padding:0"><canvas id="thumb" width="34" height="34"></canvas></button></div>
+    <button id="shoot">[ SHOOT ]</button>
+    <div class="r"><button id="aux">[ FLIP ]</button></div>
+  </footer>
+</div>
+
+<section id="sheet" aria-label="Result">
+  <div class="pic"><img id="shot" alt="Filtered shot"></div>
+  <div class="row"><button id="save">↘ SAVE</button><span id="saveNote"></span><button id="close">CLOSE</button></div>
+</section>
+
+<input id="file" type="file" hidden>
+
+<script type="module">
+/* ---------- constants ---------- */
+const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
+const PAL=[[0,0,0],[85,85,85],[170,170,170],[255,255,255]];
+const RES=[96,160,240];           // grid width (px of the filtered image)
+const ASPECT_VIEW=3/4;const ASPECT=4/3;                 // grid height = width * 4/3 (portrait)
+
+const $=s=>document.querySelector(s);
+const screen=$('#screen'),sctx=screen.getContext('2d');
+const msg=$('#msg');
+const state={src:'cam',facing:'environment',resIdx:1,con:1.3,zoom:1,
+  img:null,stream:null,video:null,three:null,paused:false,lastBlob:null};
+const work=document.createElement('canvas');   // grid-size source
+const wctx=work.getContext('2d',{willReadFrequently:true});
+const lo=document.createElement('canvas');      // grid-size filtered
+const lctx=lo.getContext('2d');
+
+function gridSize(){const w=RES[state.resIdx];return[w,Math.round(w*ASPECT)]}
+function setMsg(t){msg.textContent=t||'';msg.classList.toggle('on',!!t)}
+
+/* ---------- filter: luma → contrast → Bayer 4×4 → 4 tones ---------- */
+function filterToLo(){
+  const [W,H]=gridSize();
+  const id=wctx.getImageData(0,0,W,H),d=id.data,c=state.con;
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const i=(y*W+x)*4;
+      let v=(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])/255;
+      v=(v-.5)*c+.5;
+      const t=(BAYER[(y&3)*4+(x&3)]+.5)/16;
+      let q=Math.floor(v*3+t);q=q<0?0:q>3?3:q;
+      const p=PAL[q];d[i]=p[0];d[i+1]=p[1];d[i+2]=p[2];d[i+3]=255;
+    }
+  }
+  if(lo.width!==W||lo.height!==H){lo.width=W;lo.height=H}
+  lctx.putImageData(id,0,0);
+}
+
+/* draw cover-fit source (with zoom) into the work canvas */
+function drawCover(src,sw,sh,mirror){
+  const [W,H]=gridSize();
+  if(work.width!==W||work.height!==H){work.width=W;work.height=H}
+  const z=state.zoom,ta=W/H;
+  let cw=sw,ch=sh;
+  if(sw/sh>ta)cw=sh*ta;else ch=sw/ta;
+  cw/=z;ch/=z;
+  const cx=(sw-cw)/2,cy=(sh-ch)/2;
+  wctx.save();
+  wctx.imageSmoothingEnabled=true;wctx.imageSmoothingQuality='high';
+  if(mirror){wctx.translate(W,0);wctx.scale(-1,1)}
+  wctx.drawImage(src,cx,cy,cw,ch,0,0,W,H);
+  wctx.restore();
+}
+
+/* ---------- display ---------- */
+function present(){
+  const [W,H]=gridSize();
+  const box=$('#view').getBoundingClientRect();
+  const dpr=Math.min(devicePixelRatio||1,3);
+  const k=Math.max(1,Math.round(Math.max(box.width*dpr/W,box.height*dpr/H)));
+  if(screen.width!==W*k||screen.height!==H*k){screen.width=W*k;screen.height=H*k}
+  sctx.imageSmoothingEnabled=false;
+  sctx.drawImage(lo,0,0,screen.width,screen.height);
+}
+
+/* ---------- sources ---------- */
+async function startCam(){
+  stopCam();
+  if(!navigator.mediaDevices?.getUserMedia){setMsg('Camera API unavailable.\nOpen over HTTPS or use [PHOTO].');return}
+  try{
+    setMsg('Starting camera…');
+    const s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:state.facing},width:{ideal:1280},height:{ideal:960}}});
+    if(state.src!=='cam'){s.getTracks().forEach(t=>t.stop());return}
+    const v=document.createElement('video');v.playsInline=true;v.muted=true;v.srcObject=s;
+    await v.play();
+    state.stream=s;state.video=v;setMsg('');
+  }catch(e){
+    setMsg('Camera '+(e.name==='NotAllowedError'?'blocked.\nAllow access in browser settings,\nor use [PHOTO].':'error: '+e.name+'.\nUse [PHOTO] instead.'));
+  }
+}
+function stopCam(){state.stream?.getTracks().forEach(t=>t.stop());state.stream=null;state.video=null}
+
+function pickFile(accept){const f=$('#file');f.accept=accept;f.value='';f.click()}
+$('#file').addEventListener('change',async e=>{
+  const f=e.target.files[0];if(!f)return;
+  if(state.src==='photo'){
+    try{
+      const bmp=await createImageBitmap(f,{imageOrientation:'from-image'});
+      state.img=bmp;state.zoom=1;setMsg('');updateRail();
+    }catch(err){setMsg('Cannot read this image.\n'+err.message)}
+  }else if(state.src==='glb'){
+    await loadGLB(f);
+  }
+});
+
+/* ---------- three.js (lazy) ---------- */
+async function ensureThree(){
+  if(state.three)return state.three;
+  setMsg('Loading 3D engine…');
+  const THREE=await import('three');
+  const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
+  const {DRACOLoader}=await import('three/addons/loaders/DRACOLoader.js');
+  const {MeshoptDecoder}=await import('three/addons/libs/meshopt_decoder.module.js');
+  const {RoomEnvironment}=await import('three/addons/environments/RoomEnvironment.js');
+  const [W,H]=[480,640];
+  const canvas=document.createElement('canvas');
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,preserveDrawingBuffer:true});
+  renderer.setSize(W,H,false);renderer.setPixelRatio(1);
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
+  const scene=new THREE.Scene();
+  const pm=new THREE.PMREMGenerator(renderer);
+  scene.environment=pm.fromScene(new RoomEnvironment(),0.04).texture;
+  const key=new THREE.DirectionalLight(0xffffff,2.2);key.position.set(-2.5,3,3);scene.add(key);
+  const camera=new THREE.PerspectiveCamera(38,W/H,0.1,100);camera.position.set(0,0,4);
+  const pivot=new THREE.Group();scene.add(pivot);
+  const loader=new GLTFLoader();
+  const draco=new DRACOLoader();draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+  loader.setDRACOLoader(draco);loader.setMeshoptDecoder(MeshoptDecoder);
+  const T={THREE,renderer,scene,camera,pivot,loader,canvas,W,H,model:null,rotY:0.5,rotX:0.15,auto:true,
+    bg:document.createElement('canvas')};
+  // demo object: a torus knot so the filter has something to chew on
+  const demo=new THREE.Mesh(new THREE.TorusKnotGeometry(.62,.24,200,32),new THREE.MeshStandardMaterial({color:0xdddddd,roughness:.45,metalness:.1}));
+  setModel(T,demo,true);
+  state.three=T;setMsg('');
+  return T;
+}
+function disposeModel(T){
+  if(!T.model)return;
+  T.pivot.remove(T.model);
+  T.model.traverse(o=>{if(o.isMesh){o.geometry?.dispose();
+    const ms=Array.isArray(o.material)?o.material:[o.material];
+    ms.forEach(m=>{if(!m)return;for(const k in m){const v=m[k];if(v&&v.isTexture)v.dispose()}m.dispose()})}});
+  T.model=null;
+}
+function setModel(T,obj,isDemo){
+  const {THREE}=T;
+  disposeModel(T);
+  const box=new THREE.Box3().setFromObject(obj);
+  const size=box.getSize(new THREE.Vector3()),ctr=box.getCenter(new THREE.Vector3());
+  const s=1.7/Math.max(size.x,size.y,size.z,1e-6);
+  const holder=new THREE.Group();
+  obj.position.sub(ctr);holder.add(obj);holder.scale.setScalar(s);
+  T.pivot.add(holder);T.model=holder;T.isDemo=isDemo;
+}
+async function loadGLB(file){
+  try{
+    const T=await ensureThree();
+    setMsg('Reading '+file.name.slice(0,28)+'…');
+    const buf=await file.arrayBuffer();
+    const gltf=await new Promise((res,rej)=>T.loader.parse(buf,'',res,rej));
+    setModel(T,gltf.scene,false);
+    state.zoom=1;T.auto=true;setMsg('');updateRail();
+  }catch(e){
+    setMsg('Cannot load this model.\n'+(e?.message||e));
+  }
+}
+function renderThree(){
+  const T=state.three;if(!T)return false;
+  if(T.auto)T.rotY+=0.008;
+  T.pivot.rotation.set(T.rotX,T.rotY,0);
+  T.camera.position.z=4.2/state.zoom;
+  T.renderer.render(T.scene,T.camera);
+  const [W,H]=gridSize();
+  if(work.width!==W||work.height!==H){work.width=W;work.height=H}
+  // backdrop gradient (dark, gives the dither a ground to sit on)
+  const g=wctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#5a5a5a');g.addColorStop(1,'#151515');
+  wctx.fillStyle=g;wctx.fillRect(0,0,W,H);
+  wctx.imageSmoothingEnabled=true;wctx.imageSmoothingQuality='high';
+  wctx.drawImage(T.canvas,0,0,W,H);
+  return true;
+}
+
+/* 3D drag / pinch */
+(()=>{
+  const view=$('#view');const pts=new Map();let pd=0;
+  view.addEventListener('pointerdown',e=>{view.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size===2){const [a,b]=[...pts.values()];pd=Math.hypot(a[0]-b[0],a[1]-b[1])}
+    if(state.src==='glb'&&state.three)state.three.auto=false});
+  view.addEventListener('pointermove',e=>{
+    if(!pts.has(e.pointerId))return;
+    const p=pts.get(e.pointerId);const dx=e.clientX-p[0],dy=e.clientY-p[1];
+    pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size===2){const [a,b]=[...pts.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);
+      if(pd)setZoom(state.zoom*d/pd);pd=d;return}
+    if(state.src==='glb'&&state.three){const T=state.three;T.rotY+=dx*0.012;T.rotX=Math.max(-1.2,Math.min(1.2,T.rotX+dy*0.012))}
+  });
+  const up=e=>{pts.delete(e.pointerId);pd=0};
+  view.addEventListener('pointerup',up);view.addEventListener('pointercancel',up);
+  view.addEventListener('wheel',e=>{e.preventDefault();setZoom(state.zoom*(e.deltaY<0?1.1:1/1.1))},{passive:false});
+  // tap empty PHOTO view to open a file
+  view.addEventListener('click',()=>{if(state.src==='photo'&&!state.img)pickFile('image/*')});
+})();
+
+/* ---------- controls ---------- */
+function setZoom(z){state.zoom=Math.max(1,Math.min(4,z));updateRail()}
+function updateRail(){
+  $('#rZoom').textContent='x'+state.zoom.toFixed(1);
+  $('#rRes').textContent=RES[state.resIdx];
+  $('#rMode').textContent=state.src==='cam'?'REC':state.src==='photo'?'VIEW':'3D';
+  $('#res').textContent='[RES '+RES[state.resIdx]+']';
+}
+$('#zIn').onclick=()=>setZoom(state.zoom+.25);
+$('#zOut').onclick=()=>setZoom(state.zoom-.25);
+$('#res').onclick=()=>{state.resIdx=(state.resIdx+1)%RES.length;updateRail()};
+$('#con').oninput=e=>{state.con=e.target.value/100};
+
+async function setSource(s){
+  state.src=s;
+  document.querySelectorAll('[data-src]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.src===s));
+  setMsg('');
+  const aux=$('#aux');
+  if(s==='cam'){aux.textContent='[ FLIP ]';await startCam()}
+  else{stopCam();aux.textContent='[ OPEN ]'}
+  if(s==='photo'){if(!state.img)setMsg('Tap to open a photo.')}
+  if(s==='glb'){try{await ensureThree()}catch(e){setMsg('3D engine failed to load.\nCheck your connection.\n'+(e?.message||''))}}
+  updateRail();
+}
+document.querySelectorAll('[data-src]').forEach(b=>b.onclick=()=>{
+  if(state.src===b.dataset.src&&b.dataset.src==='photo'){pickFile('image/*');return}
+  setSource(b.dataset.src)});
+$('#aux').onclick=async()=>{
+  if(state.src==='cam'){state.facing=state.facing==='environment'?'user':'environment';await startCam()}
+  else if(state.src==='photo')pickFile('image/*');
+  else pickFile('.glb,.gltf,model/gltf-binary');
+};
+/* messages in PHOTO mode: tap opens picker */
+msg.addEventListener('click',()=>{if(state.src==='photo')pickFile('image/*')});
+
+/* ---------- capture ---------- */
+function shoot(){
+  const [W,H]=gridSize();
+  const k=Math.max(4,Math.ceil(1080/W));
+  const out=document.createElement('canvas');out.width=W*k;out.height=H*k;
+  const c=out.getContext('2d');c.imageSmoothingEnabled=false;c.drawImage(lo,0,0,out.width,out.height);
+  const fl=$('#flash');fl.style.opacity='1';setTimeout(()=>fl.style.opacity='0',60);
+  out.toBlob(b=>{
+    if(!b){setMsg('Capture failed.');return}
+    state.lastBlob=b;
+    const th=$('#thumb').getContext('2d');th.imageSmoothingEnabled=false;
+    th.fillStyle='#000';th.fillRect(0,0,34,34);
+    const s=34/Math.max(W,H),tw=W*s,thh=H*s;th.drawImage(lo,(34-tw)/2,(34-thh)/2,tw,thh);
+    $('#thumbBtn').hidden=false;
+    openSheet();
+  },'image/png');
+}
+let sheetUrl=null;
+function openSheet(){
+  if(!state.lastBlob)return;
+  if(sheetUrl)URL.revokeObjectURL(sheetUrl);
+  sheetUrl=URL.createObjectURL(state.lastBlob);
+  $('#shot').src=sheetUrl;$('#saveNote').textContent='';
+  $('#sheet').classList.add('on');state.paused=true;
+}
+$('#shoot').onclick=shoot;
+$('#thumbBtn').onclick=openSheet;
+$('#close').onclick=()=>{$('#sheet').classList.remove('on');state.paused=false};
+$('#save').onclick=async()=>{
+  const b=state.lastBlob;if(!b)return;
+  const d=new Date(),p=n=>String(n).padStart(2,'0');
+  const name=`pixpic-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`;
+  const file=new File([b],name,{type:'image/png'});
+  try{
+    if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file]});$('#saveNote').textContent='[SHARED]';return}
+  }catch(e){if(e.name==='AbortError')return}   // user cancelled → stay silent; other errors fall through to download
+  const a=document.createElement('a');a.href=sheetUrl;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  $('#saveNote').textContent='[SAVED]';
+};
+
+/* ---------- loop ---------- */
+function frame(){
+  requestAnimationFrame(frame);
+  if(state.paused||document.hidden)return;
+  let ok=false;
+  try{
+    if(state.src==='cam'&&state.video&&state.video.videoWidth){
+      drawCover(state.video,state.video.videoWidth,state.video.videoHeight,state.facing==='user');ok=true}
+    else if(state.src==='photo'&&state.img){drawCover(state.img,state.img.width,state.img.height,false);ok=true}
+    else if(state.src==='glb')ok=renderThree();
+  }catch(e){setMsg('Render error: '+e.message)}
+  if(ok){filterToLo();present()}
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)stopCam();else if(state.src==='cam')startCam();
+});
+function fit(){
+  const st=$('#stage').getBoundingClientRect(),fr=$('#frame');
+  const h=Math.min(st.height,(st.width-30)/ASPECT_VIEW);
+  fr.style.setProperty('--vh',Math.floor(h)+'px');fr.style.setProperty('--vw',Math.floor(h*ASPECT_VIEW)+'px');
+}
+addEventListener('resize',fit);addEventListener('orientationchange',fit);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http')){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+
+window.__pixpic={state,setSource,loadGLB};   // test hook
+fit();updateRail();setSource('cam');frame();
+</script>
+</body>
+</html>
