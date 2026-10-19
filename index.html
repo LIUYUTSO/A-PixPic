@@ -67,7 +67,7 @@ input[type=range]::-moz-range-thumb{width:8px;height:14px;background:#fff;border
 #sheet .pic{min-height:0;display:flex;align-items:center;justify-content:center}
 #sheet img{max-width:100%;max-height:100%;image-rendering:pixelated;display:block;user-select:auto;-webkit-user-select:auto;-webkit-touch-callout:default}
 #sheet .row{justify-content:space-between}
-@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}#flash{display:none}}
 </style>
 </head>
 <body>
@@ -95,7 +95,7 @@ input[type=range]::-moz-range-thumb{width:8px;height:14px;background:#fff;border
   </div>
 </main>
 
-<div>
+<div id="ctl">
   <div id="tune">
     <div class="row">
       <button id="zOut" aria-label="Zoom out">[ − ]</button>
@@ -106,7 +106,7 @@ input[type=range]::-moz-range-thumb{width:8px;height:14px;background:#fff;border
   </div>
   <footer>
     <div class="l"><button id="thumbBtn" aria-label="Open last shot" hidden style="padding:0"><canvas id="thumb" width="34" height="34"></canvas></button></div>
-    <button id="shoot">[ SHOOT ]</button>
+    <button id="shoot" disabled>[ SHOOT ]</button>
     <div class="r"><button id="aux">[ FLIP ]</button></div>
   </footer>
 </div>
@@ -184,21 +184,25 @@ function present(){
 }
 
 /* ---------- sources ---------- */
+let camSeq=0;
 async function startCam(){
-  stopCam();
+  stopCam();const my=camSeq;let s=null;
   if(!navigator.mediaDevices?.getUserMedia){setMsg('Camera API unavailable.\nOpen over HTTPS or use [PHOTO].');return}
   try{
     setMsg('Starting camera…');
-    const s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:state.facing},width:{ideal:1280},height:{ideal:960}}});
-    if(state.src!=='cam'){s.getTracks().forEach(t=>t.stop());return}
+    s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:state.facing},width:{ideal:1280},height:{ideal:960}}});
+    if(my!==camSeq||state.src!=='cam'){s.getTracks().forEach(t=>t.stop());return}
     const v=document.createElement('video');v.playsInline=true;v.muted=true;v.srcObject=s;
     await v.play();
+    if(my!==camSeq){s.getTracks().forEach(t=>t.stop());return}
     state.stream=s;state.video=v;setMsg('');
   }catch(e){
+    s?.getTracks().forEach(t=>t.stop());
+    if(my!==camSeq)return;   // superseded by a newer start/stop: stay silent
     setMsg('Camera '+(e.name==='NotAllowedError'?'blocked.\nAllow access in browser settings,\nor use [PHOTO].':'error: '+e.name+'.\nUse [PHOTO] instead.'));
   }
 }
-function stopCam(){state.stream?.getTracks().forEach(t=>t.stop());state.stream=null;state.video=null}
+function stopCam(){camSeq++;state.stream?.getTracks().forEach(t=>t.stop());state.stream=null;state.video=null}
 
 function pickFile(accept){const f=$('#file');f.accept=accept;f.value='';f.click()}
 $('#file').addEventListener('change',async e=>{
@@ -347,7 +351,10 @@ $('#aux').onclick=async()=>{
 msg.addEventListener('click',()=>{if(state.src==='photo')pickFile('image/*')});
 
 /* ---------- capture ---------- */
+let live=false;   // true once a real frame has been filtered; gates SHOOT
+function setLive(v){if(live!==v){live=v;$('#shoot').disabled=!v}}
 function shoot(){
+  if(!live)return;
   const [W,H]=gridSize();
   const k=Math.max(4,Math.ceil(1080/W));
   const out=document.createElement('canvas');out.width=W*k;out.height=H*k;
@@ -370,10 +377,17 @@ function openSheet(){
   sheetUrl=URL.createObjectURL(state.lastBlob);
   $('#shot').src=sheetUrl;$('#saveNote').textContent='';
   $('#sheet').classList.add('on');state.paused=true;
+  setBackdropInert(true);$('#close').focus();
+}
+function setBackdropInert(on){document.querySelectorAll('header,main,#ctl').forEach(e=>e.inert=on)}
+function closeSheet(){
+  $('#sheet').classList.remove('on');state.paused=false;
+  setBackdropInert(false);$('#shoot').focus();
 }
 $('#shoot').onclick=shoot;
 $('#thumbBtn').onclick=openSheet;
-$('#close').onclick=()=>{$('#sheet').classList.remove('on');state.paused=false};
+$('#close').onclick=closeSheet;
+addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#sheet').classList.contains('on'))closeSheet()});
 $('#save').onclick=async()=>{
   const b=state.lastBlob;if(!b)return;
   const d=new Date(),p=n=>String(n).padStart(2,'0');
@@ -397,6 +411,7 @@ function frame(){
     else if(state.src==='photo'&&state.img){drawCover(state.img,state.img.width,state.img.height,false);ok=true}
     else if(state.src==='glb')ok=renderThree();
   }catch(e){setMsg('Render error: '+e.message)}
+  setLive(ok);
   if(ok){filterToLo();present()}
 }
 document.addEventListener('visibilitychange',()=>{
